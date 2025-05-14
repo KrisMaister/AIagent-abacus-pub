@@ -3,7 +3,8 @@ from datetime import datetime
 import os
 from pathlib import Path
 import logging
-from gen_image import prompt_to_image_url
+from gen_image_1 import prompt_to_image_url
+from prompt_generator import generate_content
 
 # Set up logging
 logging.basicConfig(
@@ -16,7 +17,7 @@ class InstagramAPI:
     def __init__(self, access_token, instagram_account_id):
         self.access_token = access_token
         self.instagram_account_id = instagram_account_id
-        self.base_url = "https://graph.facebook.com/v22.0"
+        self.base_url = "https://graph.facebook.com/v18.0"
 
     def validate_credentials(self):
         """
@@ -194,188 +195,84 @@ class InstagramAPI:
                 'message': str(e),
                 'timestamp': datetime.now().isoformat()
             }
-    
-    def post_photo(self, image_path, caption, hashtags=[]):
-        """
-        Post a photo to Instagram with caption and hashtags
-        """
-        # First validate credentials and account
-        is_valid, message = self.validate_credentials()
-        if not is_valid:
-            return {
-                'status': 'error',
-                'message': f"Validation failed: {message}",
-                'timestamp': datetime.now().isoformat()
-            }
 
-        # Check API limits
-        has_limit, limit_message = self.check_api_limits()
-        if not has_limit:
-            return {
-                'status': 'error',
-                'message': f"API limit issue: {limit_message}",
-                'timestamp': datetime.now().isoformat()
-            }
+    def generate_and_post(self, prompt=None, hashtags=None):
+        """
+        Generates an image from a prompt and posts it to Instagram.
+        If no prompt/hashtags provided, generates them automatically using AI style.
 
-        # Continue with the existing post_photo implementation...
+
+        """
         try:
-            # Verify if image exists
-            if not os.path.exists(image_path):
+            # Generate AI-style content if not provided
+            if prompt is None or hashtags is None:
+                content = generate_content()
+                prompt = prompt or content['prompt']
+                hashtags = hashtags or content['hashtags']
+
+            # Check API limits before proceeding
+            has_quota, quota_message = self.check_api_limits()
+            if not has_quota:
                 return {
                     'status': 'error',
-                    'message': f"Image not found at path: {image_path}",
+                    'message': f"API quota exceeded: {quota_message}",
                     'timestamp': datetime.now().isoformat()
                 }
 
-            # Format hashtags
-            formatted_hashtags = " ".join([f"#{tag}" for tag in hashtags])
-            full_caption = f"{caption}\n\n{formatted_hashtags}"
-
-            # Upload the image
-            with open(image_path, 'rb') as image_file:
-                upload_url = f"{self.base_url}/{self.instagram_account_id}/media"
-                payload = {
-                    'access_token': self.access_token,
-                    'caption': full_caption,
-                    'media_type': 'IMAGE'
-                }
-
-                response = requests.post(
-                    upload_url,
-                    data=payload,
-                    files={'file': ('photo.jpg', image_file, 'image/jpeg')}
-                )
-
-                logger.debug(f"Upload response status: {response.status_code}")
-                logger.debug(f"Upload response content: {response.text}")
-
-                if response.status_code != 200:
-                    return {
-                        'status': 'error',
-                        'message': f"Upload failed: {response.text}",
-                        'timestamp': datetime.now().isoformat()
-                    }
-
-                creation_id = response.json().get('id')
-
-                # Publish the uploaded media
-                publish_url = f"{self.base_url}/{self.instagram_account_id}/media_publish"
-                publish_payload = {
-                    'creation_id': creation_id,
-                    'access_token': self.access_token
-                }
-
-                publish_response = requests.post(publish_url, data=publish_payload)
-
-                logger.debug(f"Publish response status: {publish_response.status_code}")
-                logger.debug(f"Publish response content: {publish_response.text}")
-
-                if publish_response.status_code != 200:
-                    return {
-                        'status': 'error',
-                        'message': f"Publishing failed: {publish_response.text}",
-                        'timestamp': datetime.now().isoformat()
-                    }
-
+            # Generate image URL
+            try:
+                # Read tokens from secret.txt
+                with open('secret.txt', 'r') as f:
+                    lines = f.readlines()
+                    hf_token = lines[0].strip()
+                    imgur_client_id = lines[1].strip()
+                
+                image_url = prompt_to_image_url(prompt, hf_token, imgur_client_id)
+            except Exception as e:
                 return {
-                    'status': 'success',
-                    'post_id': publish_response.json().get('id'),
+                    'status': 'error',
+                    'message': f"Failed to generate image: {str(e)}",
                     'timestamp': datetime.now().isoformat()
                 }
+
+            # Post to Instagram
+            return self.post_photo_with_url(
+                image_url=image_url,
+                caption=prompt,
+                hashtags=hashtags
+            )
+
+
 
         except Exception as e:
-            logger.error(f"Error in post_photo: {str(e)}", exc_info=True)
+            logger.error(f"Error in generate_and_post: {str(e)}", exc_info=True)
             return {
                 'status': 'error',
                 'message': str(e),
                 'timestamp': datetime.now().isoformat()
             }
 
-def main():
-    # Replace these with your actual credentials
-    ACCESS_TOKEN = "EAAbLmArAZCWsBOzRIENTzeIYccepzK9EKgaidlvwMrbCmmMy6XFRL2tileHsl9OWNpF9UMc8e4P0Az52R6Py4bEYZCO3CFtwJisO5M244MVvEzCu4f6u9jVu9as9WwX5Q1EmnZBD1g8vWzHZCVeoPLWy9ZBW1h41IMEipnD7jrMDxxegZB9TkSmYmn"
-    INSTAGRAM_ACCOUNT_ID = "17841474045181795"
-
-    # Initialize the API
-    ig_api = InstagramAPI(ACCESS_TOKEN, INSTAGRAM_ACCOUNT_ID)
-
-    # First, validate credentials and connection
-    print("Validating credentials and Instagram connection...")
-    is_valid, message = ig_api.validate_credentials()
-    if not is_valid:
-        print(f"Validation failed: {message}")
-        return
-
-    print(f"Validation successful: {message}")
-
-    # Check API limits
-    print("\nChecking API limits...")
-    has_limit, limit_message = ig_api.check_api_limits()
-    if not has_limit:
-        print(f"API limit issue: {limit_message}")
-        return
-
-    print(f"API limits OK: {limit_message}")
-
-    # Proceed with posting
-    print("\nProceeding with post...")
-    image_path = "/Users/kbuda/Documents/GitHub/AIagent-abacus-pub/test.jpg"  # Update this path
-    image_url = "https://i.imgur.com/UHzHVew.jpeg"
-    caption = "What a beautiful flower!"
-    hashtags = ["nature", "photography", "instagood"]
-
-    # Post the photo
-    # result = ig_api.post_photo(image_path, caption, hashtags)
-    result = ig_api.post_photo_with_url(image_url, caption, hashtags)
-
-    # Print result
-    if result['status'] == 'success':
-        print(f"\nSuccessfully posted to Instagram! Post ID: {result['post_id']}")
-    else:
-        print(f"\nError posting to Instagram: {result['message']}")
-
-def main():
-    # Replace these with your actual credentials
-    ACCESS_TOKEN = "EAAbLmArAZCWsBOzRIENTzeIYccepzK9EKgaidlvwMrbCmmMy6XFRL2tileHsl9OWNpF9UMc8e4P0Az52R6Py4bEYZCO3CFtwJisO5M244MVvEzCu4f6u9jVu9as9WwX5Q1EmnZBD1g8vWzHZCVeoPLWy9ZBW1h41IMEipnD7jrMDxxegZB9TkSmYmn"
-    INSTAGRAM_ACCOUNT_ID = "17841474045181795"
-
-    # Initialize the API
-    ig_api = InstagramAPI(ACCESS_TOKEN, INSTAGRAM_ACCOUNT_ID)
-
-    # First, validate credentials and connection
-    print("Validating credentials and Instagram connection...")
-    is_valid, message = ig_api.validate_credentials()
-    if not is_valid:
-        print(f"Validation failed: {message}")
-        return
-
-    print(f"Validation successful: {message}")
-
-    # Check API limits
-    print("\nChecking API limits...")
-    has_limit, limit_message = ig_api.check_api_limits()
-    if not has_limit:
-        print(f"API limit issue: {limit_message}")
-        return
-
-    print(f"API limits OK: {limit_message}")
-
-    # Proceed with posting
-    print("\nProceeding with post...")
-    image_path = "/Users/kbuda/Documents/GitHub/AIagent-abacus-pub/test.jpg"  # Update this path
-    image_url = "https://i.imgur.com/UHzHVew.jpeg"
-    caption = "What a beautiful flower!"
-    hashtags = ["nature", "photography", "instagood"]
-
-    # Post the photo
-    # result = ig_api.post_photo(image_path, caption, hashtags)
-    result = ig_api.post_photo_with_url(image_url, caption, hashtags)
-
-    # Print result
-    if result['status'] == 'success':
-        print(f"\nSuccessfully posted to Instagram! Post ID: {result['post_id']}")
-    else:
-        print(f"\nError posting to Instagram: {result['message']}")
-
 if __name__ == "__main__":
-    main()
+    # Read tokens from tokens_secret.txt
+    with open('tokens.txt', 'r') as f:
+        lines = f.readlines()
+        access_token = lines[0].strip()
+        instagram_account_id = lines[1].strip()
+
+    # Initialize the Instagram API
+    api = InstagramAPI(access_token, instagram_account_id)
+
+    # Validate credentials
+    is_valid, message = api.validate_credentials()
+    if not is_valid:
+        print(f"Credential validation failed: {message}")
+        exit(1)
+    print("Credentials validated successfully!")
+    # Check API limits
+    has_quota, quota_message = api.check_api_limits()
+    print(f"API Quota Status: {quota_message}")
+
+    if has_quota:
+        # Generate and post content using AI
+        result = api.generate_and_post()  # This will use auto-generated content
+        print(f"Post Result: {result}")
