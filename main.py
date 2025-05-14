@@ -3,6 +3,7 @@ from datetime import datetime
 import os
 from pathlib import Path
 import logging
+import base64
 from gen_image import prompt_to_image_url
 
 # Set up logging
@@ -198,40 +199,24 @@ class InstagramAPI:
     def generate_and_post(self, prompt, hashtags=None):
         """
         Generates an image from a prompt and posts it to Instagram
-        Args:
-            prompt (str): The prompt for image generation
-            hashtags (list): Optional list of hashtags
-        Returns:
-            dict: Response containing status and details of the post
         """
         try:
-            if hashtags is None:
-                hashtags = []
+            # Get secrets for image generation
+            secrets = read_secrets()
+            hf_token = secrets.get('HUGGINGFACE_TOKEN')
+            imgur_client_id = secrets.get('IMGUR_CLIENT_ID')
 
-            # Configuration for image generation
-            hf_token = os.getenv('HUGGINGFACE_TOKEN')
-            imgur_client_id = os.getenv('IMGUR_CLIENT_ID')
-
-            if not hf_token or not imgur_client_id:
-                return {
-                    'status': 'error',
-                    'message': 'Missing required environment variables: HUGGINGFACE_TOKEN or IMGUR_CLIENT_ID',
-                    'timestamp': datetime.now().isoformat()
-                }
-
-            # Generate image and get URL
-            logger.info(f"Generating image for prompt: {prompt}")
+            # Generate image URL
             image_url = prompt_to_image_url(prompt, hf_token, imgur_client_id)
-            
             if not image_url:
                 return {
                     'status': 'error',
-                    'message': 'Failed to generate or upload image',
+                    'message': 'Failed to generate image URL',
                     'timestamp': datetime.now().isoformat()
                 }
 
             # Post to Instagram
-            return self.post_photo_with_url(image_url, prompt, hashtags)
+            return self.post_photo_with_url(image_url, prompt, hashtags or [])
 
         except Exception as e:
             logger.error(f"Error in generate_and_post: {str(e)}", exc_info=True)
@@ -241,50 +226,58 @@ class InstagramAPI:
                 'timestamp': datetime.now().isoformat()
             }
 
-if __name__ == "__main__":
-    # Set up logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
+def read_secrets():
+    """Read secrets from tokens_secret.txt file"""
+    try:
+        with open('tokens_secret.txt', 'r') as f:
+            content = f.read()
+            # Decode base64 content
+            decoded = base64.b64decode(content).decode('utf-8')
+            secrets = {}
+            for line in decoded.splitlines():
+                if line.startswith('export '):
+                    key, value = line.replace('export ', '').split('=', 1)
+                    secrets[key] = value.strip('"')
+            return secrets
+    except Exception as e:
+        logger.error(f"Error reading secrets file: {str(e)}")
+        return {}
 
-    # Get environment variables
-    access_token = os.getenv('INSTAGRAM_ACCESS_TOKEN')
-    account_id = os.getenv('INSTAGRAM_ACCOUNT_ID')
-    
-    if not access_token or not account_id:
-        logger.error("Missing required environment variables: INSTAGRAM_ACCESS_TOKEN or INSTAGRAM_ACCOUNT_ID")
-        exit(1)
+def main():
+    # Get credentials from secrets file
+    secrets = read_secrets()
+    access_token = secrets.get('INSTAGRAM_ACCESS_TOKEN')
+    instagram_account_id = secrets.get('INSTAGRAM_ACCOUNT_ID')
 
-    # Initialize Instagram API
-    instagram = InstagramAPI(access_token, account_id)
+    if not access_token or not instagram_account_id:
+        logger.error("Missing required credentials in secrets file")
+        return
+
+    # Initialize API
+    api = InstagramAPI(access_token, instagram_account_id)
 
     # Validate credentials
-    valid, message = instagram.validate_credentials()
-    if not valid:
+    is_valid, message = api.validate_credentials()
+    if not is_valid:
         logger.error(f"Credential validation failed: {message}")
-        exit(1)
+        return
+
+    logger.info(f"Credentials validated: {message}")
 
     # Check API limits
-    has_limit, limit_message = instagram.check_api_limits()
-    if not has_limit:
+    has_calls, limit_message = api.check_api_limits()
+    if not has_calls:
         logger.error(f"API limit check failed: {limit_message}")
-        exit(1)
+        return
 
-    # Get prompt from user
-    print("\n=== AI Image Generation and Instagram Posting ===")
-    prompt = input("Enter your image generation prompt: ")
-    
-    # Get hashtags
-    hashtags_input = input("Enter hashtags (comma-separated, without #) or press Enter to skip: ")
-    hashtags = [tag.strip() for tag in hashtags_input.split(',')] if hashtags_input.strip() else []
+    logger.info(f"API limits checked: {limit_message}")
 
-    # Generate image and post
-    print("\nGenerating image and posting to Instagram...")
-    result = instagram.generate_and_post(prompt, hashtags)
+    # Example usage
+    prompt = "A serene mountain landscape at sunset"
+    hashtags = ['ai', 'art', 'digitalart', 'aiart']
 
-    if result['status'] == 'success':
-        print(f"\nSuccess! Posted to Instagram at {result['timestamp']}")
-        print(f"Post ID: {result['post_id']}")
-    else:
-        print(f"\nError: {result['message']}")
+    result = api.generate_and_post(prompt, hashtags)
+    logger.info(f"Post result: {result}")
+
+if __name__ == "__main__":
+    main()

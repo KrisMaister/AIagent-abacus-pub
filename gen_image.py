@@ -130,11 +130,33 @@ def prompt_to_image_url(prompt, hf_token, imgur_client_id):
         print(f"Error in prompt_to_image_url: {str(e)}")
         raise
 
+def read_secrets():
+    """Read secrets from tokens_secret.txt file"""
+    try:
+        with open('tokens_secret.txt', 'r') as f:
+            content = f.read()
+            # Decode base64 content
+            decoded = base64.b64decode(content).decode('utf-8')
+            secrets = {}
+            for line in decoded.splitlines():
+                if line.startswith('export '):
+                    key, value = line.replace('export ', '').split('=', 1)
+                    secrets[key] = value.strip('"')
+            return secrets
+    except Exception as e:
+        print(f"Error reading secrets file: {str(e)}")
+        return {}
+
 # Example usage
 if __name__ == "__main__":
-    # Your credentials
-    hf_token = "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"
-    imgur_client_id = "06d144c711be94d"
+    # Get credentials from secrets file
+    secrets = read_secrets()
+    hf_token = secrets.get('HUGGINGFACE_TOKEN')
+    imgur_client_id = secrets.get('IMGUR_CLIENT_ID')
+
+    if not hf_token or not imgur_client_id:
+        print("Missing required credentials in secrets file")
+        exit(1)
 
     # Test prompt
     prompt = "A futuristic cityscape at sunset with flying cars and neon lights"
