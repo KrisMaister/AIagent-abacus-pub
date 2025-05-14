@@ -2,6 +2,7 @@ import requests
 from datetime import datetime
 import os
 from pathlib import Path
+<<<<<<< HEAD
 import logging
 from gen_image import prompt_to_image_url
 
@@ -11,14 +12,22 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+=======
+>>>>>>> c596bd843a3353c9a0e7c42ac4ed547e1b3d280b
 
 class InstagramAPI:
     def __init__(self, access_token, instagram_account_id):
         self.access_token = access_token
         self.instagram_account_id = instagram_account_id
+<<<<<<< HEAD
         self.base_url = "https://graph.facebook.com/v22.0"
 
     def validate_credentials(self):
+=======
+        self.base_url = "https://graph.facebook.com/v18.0"
+
+    def post_photo(self, image_path, caption, hashtags=[]):
+>>>>>>> c596bd843a3353c9a0e7c42ac4ed547e1b3d280b
         """
         Validates the access token and Instagram account ID
         Returns tuple (bool, str) - (is_valid, message)
@@ -31,6 +40,7 @@ class InstagramAPI:
                 'access_token': self.access_token
             }
 
+<<<<<<< HEAD
             response = requests.get(token_info_url, params=params)
             if response.status_code != 200:
                 return False, f"Invalid access token. Status code: {response.status_code}"
@@ -135,12 +145,27 @@ class InstagramAPI:
     def post_photo_with_url(self, image_url, caption, hashtags=[]):
         """
         Post a photo to Instagram using an image URL
+=======
+        Args:
+            image_path (str): Local path to the image file
+            caption (str): Main caption text
+            hashtags (list): List of hashtags without the # symbol
+>>>>>>> c596bd843a3353c9a0e7c42ac4ed547e1b3d280b
         """
         try:
+            # Verify if image exists
+            if not os.path.exists(image_path):
+                return {
+                    'status': 'error',
+                    'message': f"Image not found at path: {image_path}",
+                    'timestamp': datetime.now().isoformat()
+                }
+
             # Format hashtags
             formatted_hashtags = " ".join([f"#{tag}" for tag in hashtags])
             full_caption = f"{caption}\n\n{formatted_hashtags}"
 
+<<<<<<< HEAD
             # Create media container
             media_url = f"{self.base_url}/{self.instagram_account_id}/media"
             payload = {
@@ -163,6 +188,26 @@ class InstagramAPI:
 
             creation_id = response.json().get('id')
 
+=======
+            # Create a media container
+            post_url = f"{self.base_url}/{self.instagram_account_id}/media"
+
+            # Open the image file in binary mode
+            with open(image_path, 'rb') as image_file:
+                payload = {
+                    'caption': full_caption,
+                    'access_token': self.access_token
+                }
+                files = {
+                    'image': image_file
+                }
+
+                # Create media container
+                response = requests.post(post_url, data=payload, files=files)
+                response.raise_for_status()
+                creation_id = response.json()['id']
+
+>>>>>>> c596bd843a3353c9a0e7c42ac4ed547e1b3d280b
             # Publish the container
             publish_url = f"{self.base_url}/{self.instagram_account_id}/media_publish"
             publish_payload = {
@@ -293,12 +338,17 @@ class InstagramAPI:
 
 def main():
     # Replace these with your actual credentials
+<<<<<<< HEAD
     ACCESS_TOKEN = "EAAbLmArAZCWsBOzRIENTzeIYccepzK9EKgaidlvwMrbCmmMy6XFRL2tileHsl9OWNpF9UMc8e4P0Az52R6Py4bEYZCO3CFtwJisO5M244MVvEzCu4f6u9jVu9as9WwX5Q1EmnZBD1g8vWzHZCVeoPLWy9ZBW1h41IMEipnD7jrMDxxegZB9TkSmYmn"
+=======
+    ACCESS_TOKEN = "IGAAJ2iZAYLdHhBZAE9rY0ktYjBDV0NnQjFDVlQ2c19tZAUJjWVNVcGZACQW96Um9pNzRWVlctYVZAnMFBodXJoXzluenphZAld4STJIVU5PamdyTXpqeTZAhQVhRZAVMzcVBVWFpmZAmh5Rjk0NG4zZATYxMVlsNDlpcDBtX1d6VTZAmWGtqSQZDZD"
+>>>>>>> c596bd843a3353c9a0e7c42ac4ed547e1b3d280b
     INSTAGRAM_ACCOUNT_ID = "17841474045181795"
 
     # Initialize the API
     ig_api = InstagramAPI(ACCESS_TOKEN, INSTAGRAM_ACCOUNT_ID)
 
+<<<<<<< HEAD
     # First, validate credentials and connection
     print("Validating credentials and Instagram connection...")
     is_valid, message = ig_api.validate_credentials()
@@ -327,6 +377,17 @@ def main():
     # Post the photo
     # result = ig_api.post_photo(image_path, caption, hashtags)
     result = ig_api.post_photo_with_url(image_url, caption, hashtags)
+=======
+    # Example post using local image
+    # Specify the path to your local image
+    image_path = "path/to/your/image.jpg"  # For example: "images/sunset.jpg"
+
+    caption = "Beautiful sunset at the beach! 🌅"
+    hashtags = ["sunset", "beach", "nature", "photography", "instagood"]
+
+    # Post the photo
+    result = ig_api.post_photo(image_path, caption, hashtags)
+>>>>>>> c596bd843a3353c9a0e7c42ac4ed547e1b3d280b
 
     # Print result
     if result['status'] == 'success':
@@ -377,5 +438,65 @@ def main():
     else:
         print(f"\nError posting to Instagram: {result['message']}")
 
+# Helper function to validate image before posting
+def validate_image(image_path):
+    """
+    Validates if the image meets Instagram's requirements
+    """
+    try:
+        # Check if file exists
+        if not os.path.exists(image_path):
+            return False, "Image file does not exist"
+
+        # Check file extension
+        valid_extensions = ['.jpg', '.jpeg', '.png']
+        file_extension = Path(image_path).suffix.lower()
+        if file_extension not in valid_extensions:
+            return False, f"Invalid file format. Must be one of: {valid_extensions}"
+
+        # Check file size (Instagram's limit is 8MB)
+        file_size = os.path.getsize(image_path) / (1024 * 1024)  # Convert to MB
+        if file_size > 8:
+            return False, "Image file size must be less than 8MB"
+
+        return True, "Image is valid"
+
+    except Exception as e:
+        return False, f"Error validating image: {str(e)}"
+
+# Example usage with image validation
+def post_with_validation():
+    ACCESS_TOKEN = "your_access_token_here"
+    INSTAGRAM_ACCOUNT_ID = "your_instagram_account_id_here"
+
+    # Initialize the API
+    ig_api = InstagramAPI(ACCESS_TOKEN, INSTAGRAM_ACCOUNT_ID)
+
+    # Local image path
+    image_path = "images/sunset.jpg"  # Update this path to your image location
+
+    # Validate image first
+    is_valid, message = validate_image(image_path)
+    if not is_valid:
+        print(f"Image validation failed: {message}")
+        return
+
+    # Prepare post content
+    caption = "Enjoying this beautiful sunset! 🌅"
+    hashtags = ["sunset", "beachlife", "nature", "photography", "instadaily"]
+
+    # Make the post
+    result = ig_api.post_photo(image_path, caption, hashtags)
+
+    # Check result
+    if result['status'] == 'success':
+        print(f"Posted successfully! Post ID: {result['post_id']}")
+    else:
+        print(f"Error: {result['message']}")
+
 if __name__ == "__main__":
+<<<<<<< HEAD
     main()
+=======
+    post_with_validation()
+>>>>>>> c596bd843a3353c9a0e7c42ac4ed547e1b3d280b
