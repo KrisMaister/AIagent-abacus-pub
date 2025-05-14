@@ -243,6 +243,77 @@ def read_secrets():
         logger.error(f"Error reading secrets file: {str(e)}")
         return {}
 
+def generate_detailed_prompt(topic_description):
+    """
+    Generate a detailed image prompt based on a high-level description.
+    Returns a tuple of (detailed_prompt, hashtags)
+    """
+    # Base styles and modifiers for different types of content
+    art_styles = {
+        'cartoon': 'cartoon style, vibrant colors, exaggerated features, comic-like, bold outlines',
+        'political': 'editorial cartoon style, satirical, symbolic elements, metaphorical imagery',
+        'modern': 'contemporary art style, minimalist, clean lines, bold composition',
+        'classic': 'traditional art style, detailed, realistic, rich colors, dramatic lighting'
+    }
+
+    # Keywords for different themes
+    theme_keywords = {
+        'political': 'political satire, government, democracy, power dynamics, social commentary',
+        'social': 'society, community, human interaction, social issues, cultural elements',
+        'news': 'current events, journalism, media coverage, breaking news, reportage',
+        'cultural': 'traditions, heritage, customs, cultural identity, social norms'
+    }
+
+    # Process the description to identify key elements
+    description_lower = topic_description.lower()
+    
+    # Select appropriate style based on description
+    selected_style = art_styles['cartoon']  # default style
+    if 'cartoon' in description_lower or 'comic' in description_lower:
+        selected_style = art_styles['cartoon']
+    elif 'political' in description_lower:
+        selected_style = art_styles['political']
+    elif 'modern' in description_lower:
+        selected_style = art_styles['modern']
+    elif 'classic' in description_lower or 'traditional' in description_lower:
+        selected_style = art_styles['classic']
+
+    # Generate theme-specific keywords
+    theme_elements = []
+    if 'political' in description_lower:
+        theme_elements.append(theme_keywords['political'])
+    if 'social' in description_lower:
+        theme_elements.append(theme_keywords['social'])
+    if 'news' in description_lower:
+        theme_elements.append(theme_keywords['news'])
+    if 'cultural' in description_lower:
+        theme_elements.append(theme_keywords['cultural'])
+
+    # Combine elements into a detailed prompt
+    detailed_prompt = f"Create an image in {selected_style}, depicting {topic_description}. "
+    detailed_prompt += "The image should be highly detailed, with professional composition "
+    detailed_prompt += "and meaningful symbolism. "
+    if theme_elements:
+        detailed_prompt += f"Include elements of {', '.join(theme_elements)}. "
+
+    # Generate relevant hashtags
+    hashtags = ['ai', 'art', 'digitalart', 'aiart']
+    if 'political' in description_lower:
+        hashtags.extend(['politics', 'politicalart', 'editorial'])
+    if 'cartoon' in description_lower:
+        hashtags.extend(['cartoon', 'cartoonart'])
+    if 'social' in description_lower:
+        hashtags.extend(['society', 'socialcommentary'])
+    
+    # Add country-specific hashtags if mentioned
+    if 'polish' in description_lower or 'poland' in description_lower:
+        hashtags.extend(['poland', 'polska', 'polishart'])
+
+    # Remove duplicates and ensure hashtag format
+    hashtags = list(set(hashtags))
+
+    return detailed_prompt, hashtags
+
 def main():
     # Get credentials from secrets file
     secrets = read_secrets()
@@ -272,11 +343,29 @@ def main():
 
     logger.info(f"API limits checked: {limit_message}")
 
-    # Example usage
-    prompt = "A serene mountain landscape at sunset"
-    hashtags = ['ai', 'art', 'digitalart', 'aiart']
+    # Get user input for the image description
+    description = input("Please describe what kind of image you want to create: ")
+    
+    # Generate detailed prompt and hashtags
+    detailed_prompt, hashtags = generate_detailed_prompt(description)
+    
+    # Log the generated prompt
+    logger.info(f"Generated prompt: {detailed_prompt}")
+    logger.info(f"Generated hashtags: {hashtags}")
+    
+    # Confirm with user
+    print("\nGenerated image prompt:")
+    print(detailed_prompt)
+    print("\nHashtags:")
+    print(" ".join([f"#{tag}" for tag in hashtags]))
+    
+    proceed = input("\nWould you like to proceed with this prompt? (yes/no): ")
+    if proceed.lower() != 'yes':
+        logger.info("User cancelled the operation")
+        return
 
-    result = api.generate_and_post(prompt, hashtags)
+    # Generate and post the image
+    result = api.generate_and_post(detailed_prompt, hashtags)
     logger.info(f"Post result: {result}")
 
 if __name__ == "__main__":
