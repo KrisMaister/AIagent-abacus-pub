@@ -5,7 +5,7 @@ from pathlib import Path
 import logging
 import base64
 from gen_image import prompt_to_image_url
-from news_analyzer import generate_news_enhanced_prompt
+from news_analyzer import search_news, analyze_news_content, create_summary_from_news
 
 # Set up logging
 logging.basicConfig(
@@ -13,6 +13,20 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+def read_secrets():
+    """Read secrets from tokens.txt file"""
+    try:
+        with open('tokens.txt', 'r') as f:
+            secrets = {}
+            for line in f:
+                if line.startswith('export '):
+                    key, value = line.replace('export ', '').split('=', 1)
+                    secrets[key] = value.strip().strip('"')
+            return secrets
+    except Exception as e:
+        logger.error(f"Error reading secrets file: {str(e)}")
+        return {}
 
 class InstagramAPI:
     def __init__(self, access_token, instagram_account_id):
@@ -197,18 +211,43 @@ class InstagramAPI:
                 'timestamp': datetime.now().isoformat()
             }
 
-    def generate_and_post(self, prompt, hashtags=None):
+    def generate_and_post(self, query=None, hashtags=None):
         """
-        Generates an image from a prompt and posts it to Instagram
+        Generates an image from news analysis and posts it to Instagram
+        :param query: Optional search query. If None, uses default Polish election topics
+        :param hashtags: Optional list of hashtags to add to the post
         """
         try:
+            # Search and analyze news
+            articles = search_news(query)
+            if not articles:
+                logger.error("No articles found")
+                return {
+                    'status': 'error',
+                    'message': 'No relevant news articles found',
+                    'timestamp': datetime.now().isoformat()
+                }
+            
+            # Analyze the news content
+            analysis = analyze_news_content(articles)
+            if not analysis:
+                logger.error("Failed to analyze news content")
+                return {
+                    'status': 'error',
+                    'message': 'Failed to analyze news content',
+                    'timestamp': datetime.now().isoformat()
+                }
+            
+            # Create summary and image prompt
+            news_description, image_prompt = create_summary_from_news(analysis)
+            
             # Get secrets for image generation
             secrets = read_secrets()
             hf_token = secrets.get('HUGGINGFACE_TOKEN')
             imgur_client_id = secrets.get('IMGUR_CLIENT_ID')
 
-            # Generate image URL
-            image_url = prompt_to_image_url(prompt, hf_token, imgur_client_id)
+            # Generate image URL using the image prompt
+            image_url = prompt_to_image_url(image_prompt, hf_token, imgur_client_id)
             if not image_url:
                 return {
                     'status': 'error',
@@ -216,9 +255,8 @@ class InstagramAPI:
                     'timestamp': datetime.now().isoformat()
                 }
 
-            # Post to Instagram
-            return self.post_photo_with_url(image_url, prompt, hashtags or [])
-
+            # Post to Instagram with the news description
+            return self.post_photo_with_url(image_url, news_description, hashtags or [])
         except Exception as e:
             logger.error(f"Error in generate_and_post: {str(e)}", exc_info=True)
             return {
@@ -227,33 +265,7 @@ class InstagramAPI:
                 'timestamp': datetime.now().isoformat()
             }
 
-def generate_detailed_prompt(topic_description):
-    """
-    Generate a detailed image prompt based on a high-level description and current news.
-    Returns a tuple of (detailed_prompt, hashtags)
-    """
-    # Get news-enhanced description and hashtags directly
-    # Since news_analyzer.py now handles all the prompt generation
-    return generate_news_enhanced_prompt(topic_description)
-
-def read_secrets():
-    """Read secrets from tokens_secret.txt file"""
-    try:
-        with open('tokens_secret.txt', 'r') as f:
-            content = f.read()
-            # Decode base64 content
-            decoded = base64.b64decode(content).decode('utf-8')
-            secrets = {}
-            for line in decoded.splitlines():
-                if line.startswith('export '):
-                    key, value = line.replace('export ', '').split('=', 1)
-                    secrets[key] = value.strip('"')
-            return secrets
-    except Exception as e:
-        logger.error(f"Error reading secrets file: {str(e)}")
-        return {}
-
-def main():
+if __name__ == "__main__":
     # Get credentials from secrets file
     secrets = read_secrets()
     access_token = secrets.get('INSTAGRAM_ACCESS_TOKEN')
@@ -261,51 +273,28 @@ def main():
 
     if not access_token or not instagram_account_id:
         logger.error("Missing required credentials in secrets file")
-        return
+        exit(1)
 
-    # Initialize API
+    # Create Instagram API instance
     api = InstagramAPI(access_token, instagram_account_id)
 
     # Validate credentials
     is_valid, message = api.validate_credentials()
     if not is_valid:
         logger.error(f"Credential validation failed: {message}")
-        return
-
-    logger.info(f"Credentials validated: {message}")
+        exit(1)
 
     # Check API limits
-    has_calls, limit_message = api.check_api_limits()
-    if not has_calls:
-        logger.error(f"API limit check failed: {limit_message}")
-        return
+    has_quota, quota_message = api.check_api_limits()
+    if not has_quota:
+        logger.error(f"API limit check failed: {quota_message}")
+        exit(1)
 
-    logger.info(f"API limits checked: {limit_message}")
-
-    # Get user input for the image description
-    description = input("Please describe what kind of image you want to create: ")
+    # Generate and post content
+    hashtags = ['Poland', 'Politics', 'News', 'Democracy', 'Elections2024']
+    result = api.generate_and_post(hashtags=hashtags)
     
-    # Generate detailed prompt and hashtags
-    detailed_prompt, hashtags = generate_detailed_prompt(description)
-    
-    # Log the generated prompt
-    logger.info(f"Generated prompt: {detailed_prompt}")
-    logger.info(f"Generated hashtags: {hashtags}")
-    
-    # Confirm with user
-    print("\nGenerated image prompt:")
-    print(detailed_prompt)
-    print("\nHashtags:")
-    print(" ".join([f"#{tag}" for tag in hashtags]))
-    
-    proceed = input("\nWould you like to proceed with this prompt? (yes/no): ")
-    if proceed.lower() != 'yes':
-        logger.info("User cancelled the operation")
-        return
-
-    # Generate and post the image
-    result = api.generate_and_post(detailed_prompt, hashtags)
-    logger.info(f"Post result: {result}")
-
-if __name__ == "__main__":
-    main()
+    if result['status'] == 'success':
+        logger.info(f"Successfully posted to Instagram. Post ID: {result['post_id']}")
+    else:
+        logger.error(f"Failed to post to Instagram: {result['message']}")

@@ -17,12 +17,15 @@ def Image_Generation(prompt, hf_token):
         "Content-Type": "application/json"
     }
 
-    # Enhanced payload with better parameters
+    # Enhanced payload with cartoon style parameters
+    cartoon_style = "in a cartoon style, vibrant colors, clean lines, illustration art, animated movie style, Studio Ghibli inspired, "
+    enhanced_prompt = f"{cartoon_style} {prompt}"
+    
     payload = {
-        "inputs": prompt,
+        "inputs": enhanced_prompt,
         "parameters": {
             "num_inference_steps": 50,
-            "guidance_scale": 7.5,
+            "guidance_scale": 8.5,  # Slightly higher for more prompt adherence
             "width": 1024,
             "height": 1024
         }

@@ -190,114 +190,64 @@ def analyze_news_content(articles):
 
 def create_summary_from_news(analysis):
     """
-    Create a concise summary from news analysis with randomization, formatted for image generation
+    Create a news summary and an image prompt separately
+    Returns a tuple of (news_description, image_prompt)
     """
     if not analysis or not analysis['topics']:
-        default_summaries = [
-            "A symbolic visualization of Polish democracy: a modern parliament building with rays of sunlight, digital art style",
-            "An artistic representation of Poland's political landscape: ballot boxes and national symbols, digital painting",
-            "A conceptual image of Polish electoral process: voting booths with Polish flag colors, modern art style",
-            "A dynamic composition showing Poland's democratic journey: parliament building and citizen silhouettes, digital illustration"
+        default_pairs = [
+            (
+                "Latest updates on Polish democracy and electoral developments",
+                "modern parliament building, rays of sunlight, Polish flag colors"
+            ),
+            (
+                "Current state of Polish political landscape and electoral process",
+                "ballot boxes, Polish national symbols, white eagle emblem"
+            ),
+            (
+                "Polish electoral system and democratic institutions in focus",
+                "voting booths, red and white colors, people silhouettes"
+            ),
+            (
+                "Poland's democratic journey and political transformation",
+                "parliament building facade, citizen silhouettes, Polish flag"
+            )
         ]
-        return random.choice(default_summaries)
+        return random.choice(default_pairs)
 
-    # Extract key themes with variations suitable for image generation
-    themes = {
-        'tusk': ['Donald Tusk addressing supporters', 'opposition leader in discussion', 'Tusk at campaign rally'],
-        'trzaskowski': ['Trzaskowski speaking to crowd', 'Warsaw Mayor at city hall', 'Trzaskowski meeting citizens'],
-        'ukrainian': ['Ukrainian community in Poland', 'Poland-Ukraine cooperation', 'international solidarity'],
-        'pis': ['government officials in session', 'parliamentary debate scene', 'political assembly'],
-        'polls': ['citizens at voting stations', 'election polls visualization', 'public opinion charts'],
-        'president': ['presidential office facade', 'official government ceremony', 'state leader address'],
-        'mayor': ['city hall meeting', 'local government assembly', 'municipal leadership']
+    # Create news description from the analysis
+    description_parts = []
+    
+    # Add main topics (up to 2)
+    if analysis['topics']:
+        description_parts.extend(analysis['topics'][:2])
+    
+    # Add one key event if available
+    if analysis['events']:
+        description_parts.append(analysis['events'][0])
+    
+    # Join all parts with proper punctuation
+    news_description = '. '.join(description_parts)
+
+    # Create image prompt
+    visual_elements = {
+        'buildings': ['parliament building', 'government palace', 'historic architecture'],
+        'symbols': ['Polish flag', 'white eagle emblem', 'national symbols'],
+        'people': ['citizen silhouettes', 'crowd gathering', 'people voting'],
+        'political': ['ballot boxes', 'voting booths', 'election symbols'],
+        'effects': ['rays of sunlight', 'dramatic lighting', 'dynamic composition']
     }
 
-    # Find main narrative from topics and events with randomization
-    all_content = ' '.join(random.sample(analysis['topics'] + analysis['events'], 
-                                       min(len(analysis['topics'] + analysis['events']), 
-                                           random.randint(3, 5)))).lower()
+    # Select elements for the image prompt
+    selected_elements = []
+    # Always include one building element
+    selected_elements.append(random.choice(visual_elements['buildings']))
+    # Add 2-3 more random elements from different categories
+    categories = list(visual_elements.keys())
+    categories.remove('buildings')  # Remove buildings as we already used it
+    for category in random.sample(categories, random.randint(2, 3)):
+        selected_elements.append(random.choice(visual_elements[category]))
 
-    # Identify present themes and select random variations
-    present_themes = []
-    for key, variations in themes.items():
-        if key in all_content:
-            present_themes.append(random.choice(variations))
-
-    # Create image-friendly summary with random elements
-    if present_themes:
-        # Select random scene setting
-        settings = [
-            "in a modern political setting",
-            "against the backdrop of Warsaw",
-            "in the heart of Polish democracy",
-            "with national symbols in background",
-            "in contemporary Poland"
-        ]
-        
-        # Select random art style
-        art_styles = [
-            "digital art style",
-            "modern illustration",
-            "photorealistic rendering",
-            "contemporary digital painting",
-            "professional photography style"
-        ]
-        
-        # Combine elements into a coherent prompt
-        theme_summary = ', '.join(random.sample(present_themes, min(2, len(present_themes))))
-        setting = random.choice(settings)
-        style = random.choice(art_styles)
-        
-        templates = [
-            f"A dynamic composition showing {theme_summary}, {setting}, {style}",
-            f"An artistic visualization of {theme_summary}, {setting}, {style}",
-            f"A powerful representation of {theme_summary}, {setting}, {style}",
-            f"A compelling scene depicting {theme_summary}, {setting}, {style}"
-        ]
-        return random.choice(templates)
-    else:
-        return "A symbolic visualization of Polish democracy: modern parliament building with national symbols, digital art style"
-
-def generate_news_enhanced_prompt(query=None):
-    """
-    Generate an enhanced prompt based on recent news about Polish elections
-    Returns a tuple of (prompt, hashtags)
-    """
-    # Default hashtags that are always relevant
-    base_hashtags = ['Poland', 'PolishElection', 'Democracy', 'Politics']
+    # Create the final image prompt
+    image_prompt = ', '.join(selected_elements)
     
-    articles = search_news(query)
-    if not articles:
-        return "A symbolic visualization of Polish democracy: modern parliament building with national symbols, digital art style", base_hashtags
-
-    analysis = analyze_news_content(articles)
-    if not analysis:
-        return "A symbolic visualization of Polish democracy: modern parliament building with national symbols, digital art style", base_hashtags
-
-    # Generate dynamic hashtags based on content
-    dynamic_hashtags = set()
-    all_content = ' '.join(analysis['topics'] + analysis['events']).lower()
-    
-    # Add hashtags based on key terms
-    if 'tusk' in all_content:
-        dynamic_hashtags.add('Tusk')
-    if 'pis' in all_content:
-        dynamic_hashtags.add('PiS')
-    if 'opposition' in all_content:
-        dynamic_hashtags.add('Opposition')
-    if 'president' in all_content:
-        dynamic_hashtags.add('President')
-    if 'election' in all_content:
-        dynamic_hashtags.add('Election2024')
-    if 'warsaw' in all_content:
-        dynamic_hashtags.add('Warsaw')
-    if 'vote' in all_content:
-        dynamic_hashtags.add('Vote')
-    
-    # Combine base and dynamic hashtags, remove duplicates
-    all_hashtags = list(set(base_hashtags + list(dynamic_hashtags)))
-    
-    # Get the summary
-    summary = create_summary_from_news(analysis)
-    
-    return summary, all_hashtags
+    return news_description, image_prompt
