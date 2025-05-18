@@ -5,84 +5,101 @@ import base64
 from io import BytesIO
 from PIL import Image
 
-def Image_Generation(prompt, hf_token):
+def Image_Generation(prompt, api_keys, max_retries=3, initial_delay=1):
     """
     Generate image using Hugging Face's Stable Diffusion API
+    
+    Args:
+        prompt (str): The image generation prompt
+        api_keys (dict): Dictionary of API keys
+        max_retries (int): Maximum number of retries
+        initial_delay (int): Initial delay in seconds between retries
     """
-    # Using Stable Diffusion XL
-    api_url = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
-
-    headers = {
-        "Authorization": f"Bearer {hf_token}",
-        "Content-Type": "application/json"
-    }
-
-    # Enhanced payload with cartoon style parameters
-    cartoon_style = "in a cartoon style, vibrant colors, clean lines, illustration art, animated movie style, Studio Ghibli inspired, "
+    cartoon_style = "cartoon style, vibrant colors, clean lines, illustration art, animated movie style: "
     enhanced_prompt = f"{cartoon_style} {prompt}"
     
+    if not api_keys.get('HUGGINGFACE_TOKEN'):
+        raise Exception("Hugging Face token not found in api_keys")
+
+    url = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
+    headers = {
+        "Authorization": f"Bearer {api_keys['HUGGINGFACE_TOKEN']}",
+        "Content-Type": "application/json"
+    }
     payload = {
         "inputs": enhanced_prompt,
         "parameters": {
             "num_inference_steps": 50,
-            "guidance_scale": 8.5,  # Slightly higher for more prompt adherence
+            "guidance_scale": 7.5,
             "width": 1024,
             "height": 1024
         }
     }
-
-    print(f"Making request to {api_url}")
-    print(f"With headers: {headers}")
-    print(f"And payload: {json.dumps(payload, indent=2)}")
-
-    # Maximum number of retries
-    max_retries = 5
-    retry_delay = 2  # seconds
-
-    for attempt in range(max_retries):
+    
+    retry_count = 0
+    delay = initial_delay
+    
+    while retry_count < max_retries:
         try:
-            print(f"\nAttempt {attempt + 1}/{max_retries}")
-            response = requests.post(api_url, headers=headers, json=payload)
-
-            # Log response details for debugging
-            print(f"Status Code: {response.status_code}")
-            print(f"Response Headers: {dict(response.headers)}")
+            print(f"Generating image with Abacus.ai (attempt {retry_count + 1}/{max_retries})")
+            
+            response = requests.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=60
+            )
 
             if response.status_code == 200:
                 print("Successfully generated image!")
                 return response.content
-
-            # Handle model loading
+            
+            elif response.status_code == 401:
+                raise Exception("Hugging Face token invalid or expired")
+            
             elif response.status_code == 503:
+                # Model is loading
                 try:
                     error_msg = response.json()
                     if "estimated_time" in error_msg:
-                        wait_time = error_msg.get("estimated_time", retry_delay)
+                        wait_time = error_msg.get("estimated_time", delay)
                         print(f"Model is loading. Waiting {wait_time} seconds...")
                         time.sleep(wait_time)
+                        retry_count += 1
                         continue
                 except:
                     print("Could not parse 503 error message")
-
-            # Print full response for debugging
-            print(f"Response content: {response.text}")
-
-            # Handle specific errors
-            if response.status_code == 404:
-                raise Exception("Model not found. Please check the model name and URL.")
-            elif response.status_code == 401:
-                raise Exception("Authentication failed. Please check your Hugging Face token.")
+            
+            elif response.status_code in [403, 429]:
+                print("Request blocked or rate limited")
+                time.sleep(delay)
+                delay *= 2
+                retry_count += 1
+                continue
+            
             else:
-                raise Exception(f"Request failed with status code: {response.status_code}")
+                print(f"API failed with status {response.status_code}")
+                print(f"Response: {response.text}")
+                time.sleep(delay)
+                delay *= 2
+                retry_count += 1
+                continue
 
-        except requests.exceptions.RequestException as e:
-            print(f"Network error: {str(e)}")
-            if attempt == max_retries - 1:
-                raise Exception(f"Network error after {max_retries} attempts: {str(e)}")
-            print(f"Retrying in {retry_delay} seconds...")
-            time.sleep(retry_delay)
-
-    raise Exception(f"Failed to generate image after {max_retries} attempts")
+        except requests.exceptions.Timeout:
+            print("Request timed out")
+            time.sleep(delay)
+            delay *= 2
+            retry_count += 1
+            continue
+            
+        except Exception as e:
+            print(f"Error: {str(e)}")
+            time.sleep(delay)
+            delay *= 2
+            retry_count += 1
+            continue
+    
+    raise Exception(f"Image generation failed after {max_retries} attempts")
 
 def upload_to_imgur(image_bytes, client_id):
     """
@@ -106,14 +123,14 @@ def upload_to_imgur(image_bytes, client_id):
     else:
         raise Exception(f"Imgur upload failed: {response.text}")
 
-def prompt_to_image_url(prompt, hf_token, imgur_client_id):
+def prompt_to_image_url(prompt, api_keys, imgur_client_id):
     """
-    Generate image from prompt and return public URL
+    Generate image from prompt using Abacus.ai and return public URL
     """
     try:
         # Generate image
         print(f"Generating image for prompt: '{prompt}'")
-        image_bytes = Image_Generation(prompt, hf_token)
+        image_bytes = Image_Generation(prompt, api_keys)
 
         # Verify image data
         try:
@@ -134,17 +151,17 @@ def prompt_to_image_url(prompt, hf_token, imgur_client_id):
         raise
 
 def read_secrets():
-    """Read secrets from tokens_secret.txt file"""
+    """Read secrets from tokens.txt file"""
     try:
-        with open('tokens_secret.txt', 'r') as f:
-            content = f.read()
-            # Decode base64 content
-            decoded = base64.b64decode(content).decode('utf-8')
+        with open('tokens.txt', 'r') as f:
             secrets = {}
-            for line in decoded.splitlines():
-                if line.startswith('export '):
-                    key, value = line.replace('export ', '').split('=', 1)
-                    secrets[key] = value.strip('"')
+            for line in f:
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    # Remove any quotes
+                    key = key.strip()
+                    value = value.strip().strip('"')
+                    secrets[key] = value
             return secrets
     except Exception as e:
         print(f"Error reading secrets file: {str(e)}")
@@ -154,10 +171,12 @@ def read_secrets():
 if __name__ == "__main__":
     # Get credentials from secrets file
     secrets = read_secrets()
-    hf_token = secrets.get('HUGGINGFACE_TOKEN')
+    api_keys = {
+        'HUGGINGFACE_TOKEN': secrets.get('HUGGINGFACE_TOKEN')
+    }
     imgur_client_id = secrets.get('IMGUR_CLIENT_ID')
 
-    if not hf_token or not imgur_client_id:
+    if not api_keys['HUGGINGFACE_TOKEN'] or not imgur_client_id:
         print("Missing required credentials in secrets file")
         exit(1)
 
@@ -165,7 +184,7 @@ if __name__ == "__main__":
     prompt = "A futuristic cityscape at sunset with flying cars and neon lights"
 
     try:
-        url = prompt_to_image_url(prompt, hf_token, imgur_client_id)
+        url = prompt_to_image_url(prompt, api_keys, imgur_client_id)
         print("\nSuccess!")
         print("Image URL:", url)
     except Exception as e:

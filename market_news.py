@@ -50,8 +50,8 @@ def generate_image_prompt(title: str, summary: str) -> str:
     # Remove common financial jargon to get to the core message
     clean_text = combined_text.replace("according to", "").replace("reported", "")
     
-    # Create a simple, direct prompt focusing on the main news point
-    prompt = f"Photorealistic visualization of {clean_text}, professional financial photography style"
+    # Create a simple, direct prompt focusing on the main news point in cartoon style
+    prompt = f"Cartoon style visualization of {clean_text}, vibrant colors, clean lines, illustration art, animated movie style"
     
     return prompt
 
